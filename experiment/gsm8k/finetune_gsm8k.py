@@ -22,6 +22,7 @@ from experiment.train_ARGDesigner import train
 from experiment.utils import save_graph_with_features, get_kwargs, load_model, generate_graph, convert_to_pyg_graph
 from sentence_transformers import SentenceTransformer
 from experiment import process_dataset as gdata
+from experiment.run_manifest import build_manifest, write_manifest
 from mas_framework.graph.graph import Graph, TestGraph
 from mas_framework.tools.reader.readers import JSONLReader
 from datasets.gsm8k_dataset import gsm_data_process, gsm_get_predict
@@ -56,6 +57,10 @@ def parse_cli_args():
     parser.add_argument('--seed', type=int, default=42, help="Random seed")
     parser.add_argument('--model_output_dir', type=str, default='output/gsm8k_finetuned_model',
                         help="Root directory for model outputs")
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Unified output dir for finetune stage (defaults to output/gsm8k/stage2_<ts>)")
+    parser.add_argument('--cold_start_dir', type=str, default=None,
+                        help="Directory holding Stage 1 cold-start graphs and task_split")
     return parser.parse_args()
 
 
@@ -324,6 +329,33 @@ async def main():
     args = parse_cli_args()
     setup_environment(args)
     loop = asyncio.get_running_loop()
+    started_at = time.time()
+
+    # Resolve unified output dir for this stage.
+    if args.output_dir:
+        stage_output_dir = os.path.abspath(args.output_dir)
+    else:
+        stage_output_dir = os.path.join(
+            "..", "..", "output", "gsm8k",
+            f"stage2_finetune_{time.strftime('%Y%m%d-%H%M%S')}"
+        )
+        stage_output_dir = os.path.abspath(stage_output_dir)
+    os.makedirs(stage_output_dir, exist_ok=True)
+
+    # Resolve cold-start dir (must contain task_split_gsm8k.json and graphs).
+    if args.cold_start_dir:
+        cold_start_dir = os.path.abspath(args.cold_start_dir)
+    else:
+        cold_start_dir = os.path.abspath(".")
+    global COLD_START_DIR, FINETUNE_DATA_DIR, TASK_SPLIT_FILE
+    COLD_START_DIR = cold_start_dir
+    FINETUNE_DATA_DIR = os.path.join(stage_output_dir, "FinetuneData")
+    TASK_SPLIT_FILE = os.path.join(cold_start_dir, "task_split_gsm8k.json")
+    if args.cold_start_dir is None:
+        # Fall back to the legacy location if present next to the split file.
+        _alt = os.path.join(cold_start_dir, "task_split_gsm8k.json")
+        if not os.path.exists(TASK_SPLIT_FILE) and os.path.exists(_alt):
+            TASK_SPLIT_FILE = _alt
 
     if args.pretrain:
         timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -364,6 +396,10 @@ async def main():
 
     await loop.run_in_executor(None, run_finetuning, pretrained_model_path, config_file_path, finetune_data_output_dir, args)
     print(f"\nGSM8K pipeline complete! Final efficient model at: {os.path.join(args.model_output_dir)}")
+
+    manifest = build_manifest("2", args, started_at)
+    manifest_path = write_manifest(stage_output_dir, "2", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 if __name__ == '__main__':

@@ -5,6 +5,7 @@ import argparse
 import asyncio
 from tqdm import tqdm
 import sys
+import time
 import datetime
 from finetune_gsm8k import setup_environment
 
@@ -16,6 +17,7 @@ from sentence_transformers import SentenceTransformer
 from mas_framework.tools.reader.readers import JSONLReader
 from mas_framework.graph.graph import TestGraph
 from experiment.utils import load_model, generate_graph, convert_to_pyg_graph
+from experiment.run_manifest import build_manifest, write_manifest
 from datasets.gsm8k_dataset import gsm_data_process, gsm_get_predict
 from gsm8k_prompt_set import ROLE_DESCRIPTION
 
@@ -45,13 +47,28 @@ def parse_args():
                         help="Limit number of samples to evaluate")
     parser.add_argument('--eval_batch_size', type=int, default=48,
                         help="Parallel batch size during evaluation")
+    parser.add_argument('--seed', type=int, default=42, help="Random seed")
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Output dir for eval results (defaults to output/gsm8k/stage3_<ts>)")
     return parser.parse_args()
 
 
 async def main(ef=True):
     args = parse_args()
-    args.seed = 42
+    started_at = datetime.datetime.now().timestamp()
     setup_environment(args)
+
+    # Resolve output dir for this stage.
+    if args.output_dir:
+        output_dir = os.path.abspath(args.output_dir)
+    else:
+        output_dir = os.path.abspath(os.path.join(
+            "..", "..", "output", "gsm8k",
+            f"stage3_eval_{time.strftime('%Y%m%d-%H%M%S')}"
+        ))
+    os.makedirs(output_dir, exist_ok=True)
+    args.output_file = os.path.join(output_dir, "gsm8k_eval_results.jsonl")
+    args.summary_log_file = os.path.join(output_dir, "evaluation_summary.jsonl")
 
     Cost.instance().reset()
     PromptTokens.instance().reset()
@@ -248,6 +265,10 @@ async def main(ef=True):
     except Exception as e:
         print(f"Failed to write summary log file: {e}")
     print("=" * 50)
+
+    manifest = build_manifest("3", args, started_at)
+    manifest_path = write_manifest(output_dir, "3", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 if __name__ == '__main__':

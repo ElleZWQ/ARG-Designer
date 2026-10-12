@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import time
 import asyncio
 import copy
 import sys
@@ -15,6 +16,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 from mas_framework.graph.graph import Graph, TestGraph
 from mas_framework.tools.reader.readers import JSONLReader
 from experiment.utils import get_kwargs, save_graph_with_features
+from experiment.run_manifest import build_manifest, write_manifest
 from experiment.gsm8k.gsm8k_prompt_set import ROLE_DESCRIPTION
 from datasets.gsm8k_dataset import gsm_data_process, gsm_get_predict
 
@@ -42,6 +44,9 @@ def parse_args():
                         help="Number of iterations to define training set size")
     parser.add_argument('--domain', type=str, default="gsm8k",
                         help="Task domain name")
+    parser.add_argument('--seed', type=int, default=42, help="Random seed")
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Output directory for cold-start graphs (defaults to output/gsm8k/stage1_<ts>)")
     return parser.parse_args()
 
 
@@ -158,6 +163,25 @@ async def evaluate_and_save_gsm8k(
 
 async def main():
     args = parse_args()
+    started_at = time.time()
+
+    # Seed for reproducibility.
+    random.seed(args.seed)
+
+    # Resolve output dir: explicit arg wins, else timestamped subdir under output/.
+    if args.output_dir:
+        output_dir = args.output_dir
+    else:
+        output_dir = os.path.join(
+            "..", "..", "output", "gsm8k",
+            f"stage1_cold_start_{time.strftime('%Y%m%d-%H%M%S')}"
+        )
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    global OUTPUT_DIR, TASK_SPLIT_FILE
+    OUTPUT_DIR = output_dir
+    TASK_SPLIT_FILE = os.path.join(output_dir, "task_split_gsm8k.json")
+
     raw_dataset = JSONLReader.parse_file(args.dataset_json)
     dataset = gsm_data_process(raw_dataset)
 
@@ -213,6 +237,10 @@ async def main():
         )
 
     print("All GSM8K cold-start data generation complete.")
+
+    manifest = build_manifest("1", args, started_at)
+    manifest_path = write_manifest(output_dir, "1", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 if __name__ == "__main__":
