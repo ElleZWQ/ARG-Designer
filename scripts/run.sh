@@ -23,7 +23,7 @@ OUTPUT_ROOT="output/${DOMAIN}" # unified artifact root (under repo root)
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GSM8K_DIR="${REPO_ROOT}/experiment/${DOMAIN}"
-PYTHON="python"               # use the active env's python; overrule via env PYTHON
+PYTHON="${PYTHON:-python}"     # use $PYTHON env var if set, else "python"
 
 stamp() { date +"%Y%m%d-%H%M%S"; }
 
