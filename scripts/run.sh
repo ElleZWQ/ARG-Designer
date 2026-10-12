@@ -17,7 +17,7 @@ LLM_NAME="GPT-5.6-Sol-joybuilder"  # LLM backend model name
 SEED=42                      # fixed seed for reproducibility
 BATCH_SIZE=4                 # data-gen / training batch size
 NUM_ITERATIONS=10            # Stage 1 train set = iterations * batch_size
-EVAL_BATCH_SIZE=48           # Stage 3 parallel eval batch
+EVAL_BATCH_SIZE=5            # Stage 3 parallel eval batch (keep low to avoid LLM rate limits)
 OUTPUT_ROOT="output/${DOMAIN}" # unified artifact root (under repo root)
 # ------------------------------------------------------------
 
