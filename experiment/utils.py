@@ -115,7 +115,10 @@ def load_model(model_dir, ef=False):
 
     saved_args = checkpoint['args']
     data_statistics = checkpoint['data_statistics']
-    saved_args['data_dir'] = '../ColdStartData_' + saved_args.get('dataset', '')
+    # Keep the data_dir actually recorded at training time (fall back to the
+    # legacy ColdStartData location only if none was saved).
+    if not saved_args.get('data_dir'):
+        saved_args['data_dir'] = '../ColdStartData_' + saved_args.get('dataset', '')
     args = Args()
     args.update_args_from_dict(saved_args)
     args.device = device
@@ -188,6 +191,7 @@ def precompute_role_embeddings(dsets, save_path="./prompt/precomputed_role_embed
         full_embedding = model.encode(f"{role}: {description.strip()}")
         role_embeddings[role] = torch.tensor(full_embedding)
 
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
     with open(save_path, 'wb') as f:
         pickle.dump(role_embeddings, f)
 
