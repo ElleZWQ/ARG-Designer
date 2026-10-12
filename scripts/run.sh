@@ -24,6 +24,8 @@ OUTPUT_ROOT="output/${DOMAIN}" # unified artifact root (under repo root)
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GSM8K_DIR="${REPO_ROOT}/experiment/${DOMAIN}"
 PYTHON="${PYTHON:-python}"     # use $PYTHON env var if set, else "python"
+export HF_HUB_OFFLINE=1        # force offline: read cached HF models, never hit the network
+export TRANSFORMERS_OFFLINE=1 # same for transformers library
 
 stamp() { date +"%Y%m%d-%H%M%S"; }
 
