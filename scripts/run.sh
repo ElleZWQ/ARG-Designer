@@ -13,7 +13,7 @@ set -euo pipefail
 # ------------------- Tunables -------------------------------
 DOMAIN="${1:-gsm8k}"          # dataset domain (only gsm8k wired up for now)
 STAGE="${2:-all}"             # stage1 | stage2 | stage3 | all
-LLM_NAME="gpt-5.6-sol"        # LLM backend model name
+LLM_NAME="GPT-5.6-Sol-joybuilder"  # LLM backend model name
 SEED=42                      # fixed seed for reproducibility
 BATCH_SIZE=4                 # data-gen / training batch size
 NUM_ITERATIONS=10            # Stage 1 train set = iterations * batch_size
