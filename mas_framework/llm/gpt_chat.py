@@ -1,3 +1,4 @@
+import os
 import aiohttp
 from typing import List, Union, Optional
 from tenacity import retry, wait_random_exponential, stop_after_attempt
@@ -11,8 +12,8 @@ from mas_framework.llm.llm_registry import LLMRegistry
 
 
 load_dotenv()
-MINE_BASE_URL = ""
-MINE_API_KEY = ""
+MINE_BASE_URL = os.getenv("BASE_URL")
+MINE_API_KEY = os.getenv("API_KEY")
 from openai import OpenAI, AsyncOpenAI
 
 

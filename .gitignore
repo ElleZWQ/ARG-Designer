@@ -1,0 +1,18 @@
+# Environment / secrets
+.env
+
+# Claude Code local state
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Output / generated
+output/
+*.jsonl
+*.checkpoint
+.DS_Store

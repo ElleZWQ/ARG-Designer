@@ -1,0 +1,50 @@
+[project]
+name = "arg-designer"
+version = "0.1.0"
+description = "Assemble Your Crew: Automatic Multi-agent Communication Topology Design via Autoregressive Graph Generation"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "torch>=2.4",
+    "torch-geometric>=2.5",
+    "sentence-transformers>=3.0",
+    "openai>=1.40",
+    "aiohttp",
+    "python-dotenv",
+    "tenacity",
+    "tiktoken",
+    "numpy",
+    "networkx",
+    "PyPDF2",
+    "python-docx",
+    "python-pptx",
+    "openpyxl",
+    "markdown",
+    "pylatexenc",
+    "bs4",
+    "requests",
+    "httpx",
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "loguru",
+    "tqdm",
+    "PyYAML",
+    "shortuuid",
+    "astunparse",
+    "class-registry",
+    "setuptools<81",
+    "google-api-python-client",
+    "arxiv",
+    "wikipedia",
+    "pytube",
+    "pandas",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
