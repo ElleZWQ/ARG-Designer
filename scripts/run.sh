@@ -64,7 +64,9 @@ run_stage3() {
     exit 1
   fi
   local cold_split="${REPO_ROOT}/output/${DOMAIN}/${latest_stage1}/task_split_${DOMAIN}.json"
-  local model_dir="${REPO_ROOT}/output/${DOMAIN}/$(ls -1 "${REPO_ROOT}/output/${DOMAIN}" | grep "^gsm8k_finetuned_model_" | sort | tail -1)"
+  # The finetune script writes its model relative to its own CWD (experiment/<domain>),
+  # so look there for the finetuned model dir.
+  local model_dir="${GSM8K_DIR}/output/$(ls -1 "${GSM8K_DIR}/output" 2>/dev/null | grep "^${DOMAIN}_finetuned_model_" | sort | tail -1)"
   ( cd "${GSM8K_DIR}" && ${PYTHON} evaluate_${DOMAIN}.py \
       --model_path "${model_dir}" \
       --task_split_path "${cold_split}" \
