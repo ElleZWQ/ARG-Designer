@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import time
 import asyncio
 import copy
 import sys
@@ -16,6 +17,7 @@ from experiment.utils import get_kwargs, save_graph_with_features
 from mas_framework.graph.graph import Graph, TestGraph
 from mas_framework.tools.reader.readers import JSONLReader
 from mas_framework.tools.coding.python_executor import PyExecutor
+from experiment.run_manifest import build_manifest, write_manifest
 from experiment.humaneval.humaneval_prompt_set import ROLE_DESCRIPTION
 
 OUTPUT_DIR = "../ColdStartData_humaneval"
@@ -36,6 +38,9 @@ def parse_args():
     parser.add_argument('--num_iterations', type=int, default=10,
                         help="Number of iterations to define training set size (consistent with GDesigner)")
     parser.add_argument('--domain', type=str, default="humaneval", help="Task domain")
+    parser.add_argument('--seed', type=int, default=42, help="Random seed")
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Output directory (defaults to output/humaneval/stage1_<ts>)")
     return parser.parse_args()
 
 
@@ -53,7 +58,7 @@ def get_unique_complex_configs_humaneval():
 
 
 def write_to_csv_humaneval(data):
-    filename = "records_humaneval.csv"
+    filename = os.path.join(OUTPUT_DIR, "records_humaneval.csv")
     fieldnames = ["dataset", "id", "question", "mode", "size", "is_correct"]
     file_exists = os.path.isfile(filename)
     with open(filename, mode='a', newline='', encoding='utf-8') as csvfile:
@@ -141,6 +146,22 @@ async def evaluate_and_save_humaneval(
 
 async def main():
     args = parse_args()
+    started_at = time.time()
+    random.seed(args.seed)
+
+    if args.output_dir:
+        output_dir = args.output_dir
+    else:
+        output_dir = os.path.join(
+            "..", "..", "output", "humaneval",
+            f"stage1_cold_start_{time.strftime('%Y%m%d-%H%M%S')}"
+        )
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    global OUTPUT_DIR, TASK_SPLIT_FILE
+    OUTPUT_DIR = output_dir
+    TASK_SPLIT_FILE = os.path.join(output_dir, "task_split_humaneval.json")
+
     dataset = JSONLReader.parse_file(args.dataset_json)
     train_set_size = args.num_iterations * args.batch_size
     all_indices = list(range(len(dataset)))
@@ -181,6 +202,10 @@ async def main():
             current_agent_num=agent_num
         )
     print("\nAll HumanEval cold start data generation completed!")
+
+    manifest = build_manifest("1", args, started_at)
+    manifest_path = write_manifest(output_dir, "1", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 if __name__ == "__main__":

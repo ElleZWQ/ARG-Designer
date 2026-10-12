@@ -56,6 +56,10 @@ def parse_cli_args():
     parser.add_argument('--seed', type=int, default=42, help="Random seed.")
     parser.add_argument('--model_output_dir', type=str, default='output/humaneval_finetuned_model',
                         help="Root output directory for all model artifacts.")
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Unified output dir for finetune stage (defaults to output/humaneval/stage2_<ts>)")
+    parser.add_argument('--cold_start_dir', type=str, default=None,
+                        help="Directory holding Stage 1 cold-start graphs and task_split")
 
     return parser.parse_args()
 
@@ -339,10 +343,28 @@ async def main():
     cli_args = parse_cli_args()
     setup_environment(cli_args)
     loop = asyncio.get_running_loop()
+    started_at = time.time()
+
+    if cli_args.output_dir:
+        stage_output_dir = os.path.abspath(cli_args.output_dir)
+    else:
+        stage_output_dir = os.path.abspath(os.path.join(
+            "..", "..", "output", "humaneval",
+            f"stage2_finetune_{time.strftime('%Y%m%d-%H%M%S')}"
+        ))
+    os.makedirs(stage_output_dir, exist_ok=True)
+
+    global COLD_START_DIR, FINETUNE_DATA_DIR, TASK_SPLIT_FILE
+    if cli_args.cold_start_dir:
+        COLD_START_DIR = os.path.abspath(cli_args.cold_start_dir)
+    else:
+        COLD_START_DIR = os.path.abspath(".")
+    FINETUNE_DATA_DIR = os.path.join(stage_output_dir, "FinetuneData")
+    TASK_SPLIT_FILE = os.path.join(COLD_START_DIR, "task_split_humaneval.json")
 
     if cli_args.pretrain:
         ts = time.strftime("%Y%m%d-%H%M%S")
-        cli_args.model_output_dir = f"{cli_args.model_output_dir}_{ts}"
+        cli_args.model_output_dir = os.path.join(stage_output_dir, "model_" + ts)
         os.makedirs(cli_args.model_output_dir, exist_ok=True)
         print(f"Starting new run; outputs in {cli_args.model_output_dir}")
         pretrained_model_path, config_file_path = await loop.run_in_executor(None, run_pretraining, cli_args)
@@ -371,6 +393,11 @@ async def main():
 
     await loop.run_in_executor(None, run_finetuning, pretrained_model_path, config_file_path, FINETUNE_DATA_DIR, cli_args)
     print("\nAll stages complete. Final model at:", os.path.join(cli_args.model_output_dir))
+
+    from experiment.run_manifest import build_manifest, write_manifest
+    manifest = build_manifest("2", cli_args, started_at)
+    manifest_path = write_manifest(stage_output_dir, "2", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 if __name__ == '__main__':
     if sys.platform == "win32":

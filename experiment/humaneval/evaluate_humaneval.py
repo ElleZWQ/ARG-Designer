@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import torch
 import argparse
 import asyncio
@@ -9,6 +10,8 @@ import datetime
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+from experiment.run_manifest import build_manifest, write_manifest
 from mas_framework.utils.globals import Cost, PromptTokens, CompletionTokens
 from sentence_transformers import SentenceTransformer
 from mas_framework.tools.reader.readers import JSONLReader
@@ -36,16 +39,32 @@ def parse_args():
                         help="Log file to record all evaluation run summaries")
     parser.add_argument('--limit', type=int, default=None, help="Limit number of evaluation samples")
     parser.add_argument('--eval_batch_size', type=int, default=32, help="Batch size for evaluation")
+    parser.add_argument('--seed', type=int, default=42, help="Random seed")
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Output dir for eval results (defaults to output/humaneval/stage3_<ts>)")
     return parser.parse_args()
 
 
 async def main(ef=True):
     args = parse_args()
     args.seed = 42
+    started_at = time.time()
     setup_environment(args)
     Cost.instance().reset()
     PromptTokens.instance().reset()
     CompletionTokens.instance().reset()
+
+    if args.output_dir:
+        output_dir = os.path.abspath(args.output_dir)
+    else:
+        output_dir = os.path.abspath(os.path.join(
+            "..", "..", "output", "humaneval",
+            f"stage3_eval_{time.strftime('%Y%m%d-%H%M%S')}"
+        ))
+    os.makedirs(output_dir, exist_ok=True)
+    args.output_file = os.path.join(output_dir, "humaneval_eval_results.jsonl")
+    args.summary_log_file = os.path.join(output_dir, "evaluation_summary.jsonl")
+
     print("Loading model and tools...")
     if ef:
         args.model_name = 'ef_best'
@@ -181,6 +200,10 @@ async def main(ef=True):
     except Exception as e:
         print(f"Failed to write summary log file: {e}")
     print("=" * 50)
+
+    manifest = build_manifest("3", args, started_at)
+    manifest_path = write_manifest(output_dir, "3", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 if __name__ == '__main__':

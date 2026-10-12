@@ -68,7 +68,7 @@ def get_unique_complex_configs_gsm8k():
 
 
 def write_to_csv_gsm8k(data):
-    filename = "records_gsm8k.csv"
+    filename = os.path.join(OUTPUT_DIR, "records_gsm8k.csv")
     fieldnames = ["dataset", "id", "question", "answer", "mode", "size", "is_correct"]
     file_exists = os.path.isfile(filename)
     with open(filename, mode='a', newline='', encoding='utf-8') as csvfile:

@@ -360,10 +360,10 @@ async def main():
 
     if args.pretrain:
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        if args.ablation:
-            args.model_output_dir = f"{args.model_output_dir}_{args.ablation}_{timestamp}"
-        else:
-            args.model_output_dir = f"{args.model_output_dir}_{timestamp}"
+        # Keep the model inside the unified stage output dir (instead of the
+        # old relative "output/gsm8k_finetuned_model" that scattered it).
+        suffix = f"_{args.ablation}_{timestamp}" if args.ablation else f"_{timestamp}"
+        args.model_output_dir = os.path.join(stage_output_dir, "model" + suffix)
 
         os.makedirs(args.model_output_dir, exist_ok=True)
         print(f"Starting new GSM8K run, outputs to: {args.model_output_dir}")
