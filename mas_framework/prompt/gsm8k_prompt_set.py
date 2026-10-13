@@ -399,3 +399,9 @@ class MultiArithPromptSet(GSM8KPromptSet):
     """MultiArith shares gsm8k's math roles and prompts verbatim."""
     pass
 
+
+@PromptSetRegistry.register('svamp')
+class SVAMPPromptSet(GSM8KPromptSet):
+    """SVAMP shares gsm8k's math roles and prompts verbatim."""
+    pass
+
