@@ -14,7 +14,7 @@ import time
 import shutil
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from experiment.args import Args
 from experiment.model import ARGDesigner

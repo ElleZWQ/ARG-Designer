@@ -1,4 +1,5 @@
 import glob
+import os
 import pandas as pd
 from typing import Union, List, Literal, Any, Dict
 import numpy as np
@@ -12,7 +13,8 @@ class MMLUDataset(ABC):
 
         self._split = split
 
-        data_path = f"/root/GDesigner/datasets/MMLU/data/{self._split}/"
+        _here = os.path.dirname(os.path.abspath(__file__))
+        data_path = os.path.join(_here, "MMLU", "data", self._split) + os.sep
         self._total_df: pd.DataFrame = self._load_data(data_path)
 
     @staticmethod
