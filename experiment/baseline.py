@@ -22,6 +22,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 from mas_framework.llm.llm_registry import LLMRegistry
+from mas_framework.tools.coding.python_executor import PyExecutor
 from experiment.run_manifest import write_manifest
 from datasets.gsm8k_dataset import (
     gsm_data_process, multiarith_data_process, svamp_data_process, gsm_get_predict
@@ -32,7 +33,7 @@ from datasets.aqua_dataset import aqua_data_process, aqua_get_predict
 def parse_args():
     p = argparse.ArgumentParser(description="Single-agent baseline evaluation")
     p.add_argument('--domain', type=str, default='gsm8k',
-                   help='gsm8k | aqua | multiarith | svamp')
+                   help='gsm8k | aqua | multiarith | svamp | humaneval')
     p.add_argument('--llm_name', type=str, default='GPT-5.6-Sol-joybuilder')
     p.add_argument('--batch_size', type=int, default=8)
     p.add_argument('--limit', type=int, default=None,
@@ -61,6 +62,11 @@ def load_dataset(domain):
         ds = aqua_data_process(raw)
         predict = aqua_get_predict
         check = lambda p, t: p == t
+    elif domain == 'humaneval':
+        raw = [json.loads(l) for l in open('datasets/humaneval/humaneval-py.jsonl', 'r', encoding='utf-8')]
+        ds = raw  # keep raw records (need prompt + test)
+        predict = None  # handled via PyExecutor
+        check = None
     else:
         raise ValueError(f"Unknown domain: {domain}")
     return ds, predict, check
@@ -79,6 +85,10 @@ AQUA_SYSTEM_PROMPT = (
     "The last line of your output contains only the final choice as a capital letter, "
     "for example: The answer is A"
 )
+CODE_SYSTEM_PROMPT = (
+    "You are an expert Python programmer. Write a complete function to solve the task. "
+    "Give only the Python code, nothing else."
+)
 
 
 async def main():
@@ -91,7 +101,14 @@ async def main():
     print(f"Evaluating single-agent baseline on {args.domain}: {total} questions")
 
     llm = LLMRegistry.get(args.llm_name)
-    system = AQUA_SYSTEM_PROMPT if args.domain == 'aqua' else SYSTEM_PROMPT
+
+    if args.domain == 'humaneval':
+        system = CODE_SYSTEM_PROMPT
+        executor = PyExecutor()
+    elif args.domain == 'aqua':
+        system = AQUA_SYSTEM_PROMPT
+    else:
+        system = SYSTEM_PROMPT
 
     solved = 0
     results = []
@@ -99,29 +116,51 @@ async def main():
     for i in range(0, total, args.batch_size):
         batch = ds[i:i + args.batch_size]
         coros = []
-        for item in batch:
-            msgs = [
-                {'role': 'system', 'content': system},
-                {'role': 'user', 'content': item['task']},
-            ]
-            coros.append(llm.agen(msgs))
-        outs = await asyncio.gather(*coros, return_exceptions=True)
 
-        for item, out in zip(batch, outs):
-            if isinstance(out, Exception):
-                results.append({'question': item['task'], 'pred': None,
-                                'gold': item['answer'], 'correct': False, 'error': str(out)})
-                continue
-            pred = predict(out)
-            gold = item['answer']
-            try:
-                correct = check(pred, gold)
-            except Exception:
-                correct = False
-            if correct:
-                solved += 1
-            results.append({'question': item['task'], 'pred': pred,
-                            'gold': gold, 'correct': correct, 'answer': out})
+        if args.domain == 'humaneval':
+            for rec in batch:
+                msgs = [
+                    {'role': 'system', 'content': system},
+                    {'role': 'user', 'content': rec['prompt']},
+                ]
+                coros.append(llm.agen(msgs))
+            outs = await asyncio.gather(*coros, return_exceptions=True)
+
+            for rec, out in zip(batch, outs):
+                if isinstance(out, Exception):
+                    results.append({'task_id': rec.get('task_id'), 'prompt': rec['prompt'],
+                                    'correct': False, 'error': str(out)})
+                    continue
+                code = out.lstrip('```python\n').rstrip('\n```')
+                is_solved, _, _ = executor.execute(code, [rec['test']], timeout=10)
+                if is_solved:
+                    solved += 1
+                results.append({'task_id': rec.get('task_id'), 'prompt': rec['prompt'],
+                                'is_solved': is_solved, 'code': code})
+        else:
+            for item in batch:
+                msgs = [
+                    {'role': 'system', 'content': system},
+                    {'role': 'user', 'content': item['task']},
+                ]
+                coros.append(llm.agen(msgs))
+            outs = await asyncio.gather(*coros, return_exceptions=True)
+
+            for item, out in zip(batch, outs):
+                if isinstance(out, Exception):
+                    results.append({'question': item['task'], 'pred': None,
+                                    'gold': item['answer'], 'correct': False, 'error': str(out)})
+                    continue
+                pred = predict(out)
+                gold = item['answer']
+                try:
+                    correct = check(pred, gold)
+                except Exception:
+                    correct = False
+                if correct:
+                    solved += 1
+                results.append({'question': item['task'], 'pred': pred,
+                                'gold': gold, 'correct': correct, 'answer': out})
 
         acc = solved / min(total, i + len(batch)) * 100
         tqdm.write(f"progress {min(total, i+len(batch))}/{total}, acc {acc:.2f}%")
