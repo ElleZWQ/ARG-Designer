@@ -393,3 +393,9 @@ f"6. Adhere to the constraints: {constraint}.\n"
     def get_combine_materials(materials: Dict[str, Any]) -> str:
         return get_combine_materials(materials)
 
+
+@PromptSetRegistry.register('multiarith')
+class MultiArithPromptSet(GSM8KPromptSet):
+    """MultiArith shares gsm8k's math roles and prompts verbatim."""
+    pass
+
