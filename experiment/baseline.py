@@ -58,7 +58,7 @@ def load_dataset(domain):
         predict = gsm_get_predict
         check = lambda p, t: float(p) == float(t)
     elif domain == 'aqua':
-        raw = json.load(open('datasets/AQuA/AQuA.jsonl', 'r', encoding='utf-8'))
+        raw = [json.loads(l) for l in open('datasets/AQuA/AQuA.jsonl', 'r', encoding='utf-8')]
         ds = aqua_data_process(raw)
         predict = aqua_get_predict
         check = lambda p, t: p == t
