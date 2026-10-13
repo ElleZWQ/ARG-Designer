@@ -42,6 +42,7 @@ def parse_cli_args():
 
     parser.add_argument('--pruning_ratio', type=float, default=0.25)
     parser.add_argument('--replay_ratio', type=float, default=0.3)
+    parser.add_argument('--limit_generation_samples', type=int, default=999, help="Max samples for pruned data")
 
     parser.add_argument('--finetune_epochs', type=int, default=100)
     parser.add_argument('--finetune_lr', type=float, default=5e-5)
