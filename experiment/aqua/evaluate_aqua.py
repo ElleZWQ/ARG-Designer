@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import torch
 import argparse
 import asyncio
@@ -15,9 +16,10 @@ from sentence_transformers import SentenceTransformer
 from mas_framework.tools.reader.readers import JSONLReader
 from mas_framework.graph.graph import TestGraph
 from experiment.utils import load_model, generate_graph, convert_to_pyg_graph
+from experiment.run_manifest import build_manifest, write_manifest
 from datasets.aqua_dataset import aqua_data_process, aqua_get_predict
-from finetune_aqua import setup_environment
-from aqua_prompt_set import ROLE_DESCRIPTION
+from experiment.aqua.finetune_aqua import setup_environment
+from experiment.aqua.aqua_prompt_set import ROLE_DESCRIPTION
 
 
 def parse_args():
@@ -33,12 +35,27 @@ def parse_args():
     parser.add_argument('--summary_log_file', type=str, default='./res_logs/evaluation_summary.jsonl')
     parser.add_argument('--limit', type=int, default=None)
     parser.add_argument('--eval_batch_size', type=int, default=10)
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Output dir for eval results (defaults to output/aqua/stage3_<ts>)")
     return parser.parse_args()
 
 
 async def main(ef=True):
     args = parse_args()
-    setup_environment(42)
+    setup_environment(args.seed)
+    started_at = time.time()
+
+    if args.output_dir:
+        output_dir = os.path.abspath(args.output_dir)
+    else:
+        output_dir = os.path.abspath(os.path.join(
+            "..", "..", "output", "aqua",
+            f"stage3_eval_{time.strftime('%Y%m%d-%H%M%S')}"
+        ))
+    os.makedirs(output_dir, exist_ok=True)
+    args.output_file = os.path.join(output_dir, "aqua_eval_results.jsonl")
+    args.summary_log_file = os.path.join(output_dir, "evaluation_summary.jsonl")
 
     Cost.instance().reset()
     PromptTokens.instance().reset()
@@ -210,6 +227,10 @@ async def main(ef=True):
     except Exception as e:
         print(f"Failed to write summary log file: {e}")
     print("=" * 50)
+
+    manifest = build_manifest("3", args, started_at)
+    manifest_path = write_manifest(output_dir, "3", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 if __name__ == '__main__':

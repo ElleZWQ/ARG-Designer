@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import time
 import asyncio
 import copy
 import sys
@@ -15,12 +16,12 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 from mas_framework.graph.graph import Graph, TestGraph
 from mas_framework.tools.reader.readers import JSONLReader
-from experiments.cold_start import get_kwargs, save_graph_with_features
-from SimpleAR.aqua.aqua_prompt_set_adapter import ROLE_DESCRIPTION
+from experiment.utils import get_kwargs, save_graph_with_features
+from experiment.run_manifest import build_manifest, write_manifest
+from experiment.aqua.aqua_prompt_set import ROLE_DESCRIPTION
 from datasets.aqua_dataset import aqua_data_process, aqua_get_predict
-import SimpleAR.prompt.AQuA_prompt_set
 
-OUTPUT_DIR = "/root/ARG-Designer/experiment/ColdStartData_Aqua"
+OUTPUT_DIR = "../ColdStartData_Aqua"
 TASK_SPLIT_FILE = "./task_split_aqua.json"
 BASE_RATE = 0.4
 
@@ -42,6 +43,9 @@ def parse_args():
                         help="Number of iterations to define training set size")
     parser.add_argument('--domain', type=str, default="aqua",
                         help="Task domain")
+    parser.add_argument('--seed', type=int, default=42, help="Random seed")
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Output directory (defaults to output/aqua/stage1_<ts>)")
     return parser.parse_args()
 
 
@@ -59,6 +63,7 @@ def get_unique_complex_configs_aqua():
 
 
 def write_to_csv_aqua(data, filename="records_aqua.csv"):
+    filename = os.path.join(OUTPUT_DIR, filename)
     fieldnames = ["dataset", "id", "question", "answer", "mode", "size", "is_correct"]
     file_exists = os.path.isfile(filename)
     with open(filename, mode='a', newline='', encoding='utf-8') as csvfile:
@@ -134,6 +139,22 @@ async def evaluate_and_save_aqua(
 
 async def main():
     args = parse_args()
+    started_at = time.time()
+    random.seed(args.seed)
+
+    if args.output_dir:
+        output_dir = args.output_dir
+    else:
+        output_dir = os.path.join(
+            "..", "..", "output", "aqua",
+            f"stage1_cold_start_{time.strftime('%Y%m%d-%H%M%S')}"
+        )
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    global OUTPUT_DIR, TASK_SPLIT_FILE
+    OUTPUT_DIR = output_dir
+    TASK_SPLIT_FILE = os.path.join(output_dir, "task_split_aqua.json")
+
     raw_dataset = JSONLReader.parse_file(args.dataset_json)
     dataset = aqua_data_process(raw_dataset)
 
@@ -185,6 +206,10 @@ async def main():
         )
 
     print("All Aqua cold-start data generation complete.")
+
+    manifest = build_manifest("1", args, started_at)
+    manifest_path = write_manifest(output_dir, "1", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 if __name__ == "__main__":

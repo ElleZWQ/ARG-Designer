@@ -24,7 +24,6 @@ from sentence_transformers import SentenceTransformer
 from experiment import process_dataset as gdata
 from mas_framework.graph.graph import Graph, TestGraph
 from mas_framework.tools.reader.readers import JSONLReader
-from experiments.cold_start import get_kwargs
 from datasets.aqua_dataset import aqua_data_process, aqua_get_predict
 from experiment.aqua.aqua_prompt_set import ROLE_DESCRIPTION
 
@@ -56,6 +55,11 @@ def parse_cli_args():
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--model_output_dir', type=str, default='output/aqua_finetuned_model')
+    parser.add_argument('--ablation', type=str, default=None)
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Unified output dir for finetune stage (defaults to output/aqua/stage2_<ts>)")
+    parser.add_argument('--cold_start_dir', type=str, default=None,
+                        help="Directory holding Stage 1 cold-start graphs and task_split")
     return parser.parse_args()
 
 
@@ -130,7 +134,7 @@ def run_pretraining(args):
 
     with open(os.path.join(pretrain_args.experiment_path, "configuration.txt"), 'w') as f:
         json.dump(pretrain_args.__dict__, f, indent=2)
-    simple_ar_model = SimpleARModel(pretrain_args, data_statistics).to(pretrain_args.device)
+    simple_ar_model = ARGDesigner(pretrain_args, data_statistics).to(pretrain_args.device)
     train(pretrain_args, simple_ar_model, dataloader_train, dataloader_validate)
 
     print("=" * 20 + " Stage 1 Complete " + "=" * 20)
@@ -283,7 +287,6 @@ async def evaluate_and_save_aqua_simple(graph: Graph, dataset, args, current_mod
                 total_solved += 1
                 name = "_".join(map(str, ['aqua', metadata['record_idx'], current_mode, current_agent_num, 'True']))
                 filepath = os.path.join(output_dir, f'{name}.pt')
-                from experiments.cold_start import save_graph_with_features
                 save_graph_with_features(metadata['flow_graph'], filepath,
                                          {"mode": current_mode, "agent_nums": current_agent_num,
                                           "is_correct": is_solved, "question": metadata['question']})
@@ -319,7 +322,7 @@ def run_finetuning(model_path, config_path, finetune_data_dir, args):
     dataloader_finetune = torch.utils.data.DataLoader(dataset_finetune, batch_size=finetune_args.batch_size,
                                                       shuffle=True, collate_fn=lambda x: x)
 
-    simple_ar_model = SimpleARModel(finetune_args, data_statistics).to(finetune_args.device)
+    simple_ar_model = ARGDesigner(finetune_args, data_statistics).to(finetune_args.device)
     checkpoint = torch.load(os.path.join(model_path, 'best_model.pth'))
     simple_ar_model.load_state_dict(checkpoint['model_state_dict'])
     print("Loaded pretrained weights, starting finetuning...")
@@ -338,12 +341,30 @@ async def main():
     cli_args = parse_cli_args()
     setup_environment(cli_args.seed)
     loop = asyncio.get_running_loop()
+    started_at = time.time()
+
+    if cli_args.output_dir:
+        stage_output_dir = os.path.abspath(cli_args.output_dir)
+    else:
+        stage_output_dir = os.path.abspath(os.path.join(
+            "..", "..", "output", "aqua",
+            f"stage2_finetune_{time.strftime('%Y%m%d-%H%M%S')}"
+        ))
+    os.makedirs(stage_output_dir, exist_ok=True)
+
+    global COLD_START_DIR, FINETUNE_DATA_DIR, TASK_SPLIT_FILE
+    if cli_args.cold_start_dir:
+        COLD_START_DIR = os.path.abspath(cli_args.cold_start_dir)
+    else:
+        COLD_START_DIR = os.path.abspath(".")
+    FINETUNE_DATA_DIR = os.path.join(stage_output_dir, "FinetuneData")
+    TASK_SPLIT_FILE = os.path.join(COLD_START_DIR, "task_split_aqua.json")
 
     if cli_args.pretrain:
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        cli_args.model_output_dir = f"{cli_args.model_output_dir}_{timestamp}"
+        cli_args.model_output_dir = os.path.join(stage_output_dir, "model_" + timestamp)
         os.makedirs(cli_args.model_output_dir, exist_ok=True)
-        print(f"Starting new GSM8K run, outputs to: {cli_args.model_output_dir}")
+        print(f"Starting new Aqua run, outputs to: {cli_args.model_output_dir}")
         pretrained_model_path, config_file_path = await loop.run_in_executor(None, run_pretraining, cli_args)
     else:
         model_dir_to_load = cli_args.load_from_dir or find_latest_model_dir()
@@ -356,7 +377,7 @@ async def main():
         if not os.path.exists(pretrained_model_path) or not os.path.exists(config_file_path):
             raise FileNotFoundError(f"Missing best_model.pth or configuration.txt in directory  {model_dir_to_load}.")
 
-    finetune_data_output_dir = FINETUNE_DATA_DIR
+    finetune_data_output_dir = os.path.join(stage_output_dir, "FinetuneData")
     os.makedirs(finetune_data_output_dir, exist_ok=True)
 
     if not os.path.exists(TASK_SPLIT_FILE):
@@ -374,6 +395,11 @@ async def main():
     await loop.run_in_executor(None, run_finetuning, pretrained_model_path, config_file_path, finetune_data_output_dir,
                                cli_args)
     print(f"\nAqua pipeline complete! Final efficient model at: {os.path.join(cli_args.model_output_dir)}")
+
+    from experiment.run_manifest import build_manifest, write_manifest
+    manifest = build_manifest("2", cli_args, started_at)
+    manifest_path = write_manifest(stage_output_dir, "2", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 if __name__ == '__main__':
