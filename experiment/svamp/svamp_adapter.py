@@ -32,7 +32,7 @@ def precompute_role_embeddings(save_path):
     return role_embeddings
 
 
-class SVAMPGraphDataset:
+class SvampGraphDataset:
     def __init__(self, data_dir, sample_size=0, pretrain=True, data_dir_ef=None):
         self.data_dir = data_dir
         self.data_dir_ef = data_dir_ef
