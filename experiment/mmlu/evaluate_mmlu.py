@@ -22,6 +22,7 @@ from mas_framework.graph.graph import TestGraph
 from experiment.utils import Accuracy, load_model, generate_graph, convert_to_pyg_graph
 from datasets.mmlu_dataset import MMLUDataset
 from datasets.MMLU.download import download
+from experiment.run_manifest import build_manifest, write_manifest
 
 
 def parse_args():
@@ -52,6 +53,8 @@ def parse_args():
                         help="model for task embeddings")
     parser.add_argument('--summary_log_file', type=str, default='./res_logs/evaluation_summary.jsonl',
                         help="log file to record evaluation summaries")
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Output dir for eval results (defaults to output/mmlu/stage3_<ts>)")
 
     return parser.parse_args()
 
@@ -169,6 +172,7 @@ def write_to_csv(
 
 async def main(ef=True):
     args = parse_args()
+    started_at = time.time()
 
     Cost.instance().reset()
     PromptTokens.instance().reset()
@@ -183,6 +187,15 @@ async def main(ef=True):
     print("Loading MMLU dataset...")
     download()
     dataset_test = MMLUDataset('val')
+
+    if args.output_dir:
+        output_dir = os.path.abspath(args.output_dir)
+    else:
+        output_dir = os.path.abspath(os.path.join(
+            "..", "..", "output", "mmlu",
+            f"stage3_eval_{time.strftime('%Y%m%d-%H%M%S')}"
+        ))
+    os.makedirs(output_dir, exist_ok=True)
 
     print(f"Loading Sentence Transformer model: {args.embedding_model}")
     sentence_model = SentenceTransformer(args.embedding_model)
@@ -239,6 +252,10 @@ async def main(ef=True):
     except Exception as e:
         print(f"Failed to write summary log file: {e}")
     print("=" * 50)
+
+    manifest = build_manifest("3", args, started_at)
+    manifest_path = write_manifest(output_dir, "3", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 if __name__ == "__main__":

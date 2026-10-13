@@ -1,5 +1,6 @@
 import json
 import math
+import time
 from typing import Optional, Iterator, Any, List
 from tqdm import tqdm
 import copy
@@ -8,6 +9,7 @@ import os
 import csv
 import torch
 from experiment.utils import get_kwargs, save_graph_with_features, Accuracy
+from experiment.run_manifest import build_manifest, write_manifest
 from experiment.mmlu.mmlu_prompt_set import ROLE_DESCRIPTION
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -37,6 +39,9 @@ def parse_args():
                         help="Domain name, same as dataset name")
     parser.add_argument('--decision_method', type=str, default="FinalRefer",
                         help="Decision method for the final node")
+    parser.add_argument('--seed', type=int, default=42, help="Random seed")
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Output directory (defaults to output/mmlu/stage1_<ts>)")
     args = parser.parse_args()
 
     if len(args.agent_names) != 1:
@@ -68,7 +73,22 @@ def get_unique_complex_configs():
 
 async def main():
     args = parse_args()
+    started_at = time.time()
+    random.seed(args.seed)
     download()  # Ensure dataset is available
+
+    if args.output_dir:
+        output_dir = args.output_dir
+    else:
+        output_dir = os.path.join(
+            "..", "..", "output", "mmlu",
+            f"stage1_cold_start_{time.strftime('%Y%m%d-%H%M%S')}"
+        )
+    output_dir = os.path.abspath(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    global OUTPUT_DIR, TASK_SPLIT_FILE
+    OUTPUT_DIR = output_dir
+    TASK_SPLIT_FILE = os.path.join(output_dir, "task_split_mmlu.json")
 
     # Split dataset into base and finetune tasks
     train_set_size = args.num_iterations * args.batch_size
@@ -127,6 +147,10 @@ async def main():
         )
 
     print("All cold-start data generation complete.")
+
+    manifest = build_manifest("1", args, started_at)
+    manifest_path = write_manifest(output_dir, "1", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 async def evaluate(
@@ -222,7 +246,7 @@ async def evaluate(
 
 
 def write_to_csv(data):
-    filename = "records.csv"
+    filename = os.path.join(OUTPUT_DIR, "records_mmlu.csv")
     fieldnames = ["dataset", "id", "question", "mode", "size", "is_correct"]
     file_exists = os.path.isfile(filename)
     with open(filename, mode='a', newline='', encoding='utf-8') as csvfile:

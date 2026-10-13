@@ -57,6 +57,10 @@ def parse_cli_args():
     parser.add_argument('--seed', type=int, default=42, help="Random seed")
     parser.add_argument('--model_output_dir', type=str, default='output/efficiency_finetuned_model',
                         help="Output directory for all model artifacts")
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help="Unified output dir for finetune stage (defaults to output/mmlu/stage2_<ts>)")
+    parser.add_argument('--cold_start_dir', type=str, default=None,
+                        help="Directory holding Stage 1 cold-start graphs and task_split")
     return parser.parse_args()
 
 
@@ -334,10 +338,28 @@ async def main():
     args = parse_cli_args()
     setup_environment(args)
     loop = asyncio.get_running_loop()
+    started_at = time.time()
+
+    if args.output_dir:
+        stage_output_dir = os.path.abspath(args.output_dir)
+    else:
+        stage_output_dir = os.path.abspath(os.path.join(
+            "..", "..", "..", "output", "mmlu",
+            f"stage2_finetune_{time.strftime('%Y%m%d-%H%M%S')}"
+        ))
+    os.makedirs(stage_output_dir, exist_ok=True)
+
+    global COLD_START_DIR, FINETUNE_DATA_DIR, TASK_SPLIT_FILE
+    if args.cold_start_dir:
+        COLD_START_DIR = os.path.abspath(args.cold_start_dir)
+    else:
+        COLD_START_DIR = os.path.abspath(".")
+    FINETUNE_DATA_DIR = os.path.join(stage_output_dir, "FinetuneData")
+    TASK_SPLIT_FILE = os.path.join(COLD_START_DIR, "task_split_mmlu.json")
 
     if args.pretrain:
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        args.model_output_dir = f"{args.model_output_dir}_{timestamp}"
+        args.model_output_dir = os.path.join(stage_output_dir, "model_" + timestamp)
         os.makedirs(args.model_output_dir, exist_ok=True)
         print(f"Starting new run, outputs in: {args.model_output_dir}")
         pretrained_path, config_path = await loop.run_in_executor(None, run_pretraining, args)
@@ -366,6 +388,11 @@ async def main():
 
     await loop.run_in_executor(None, run_finetuning, pretrained_path, config_path, FINETUNE_DATA_DIR, args)
     print("\nPipeline complete. Final model at:", args.model_output_dir)
+
+    from experiment.run_manifest import build_manifest, write_manifest
+    manifest = build_manifest("2", args, started_at)
+    manifest_path = write_manifest(stage_output_dir, "2", manifest)
+    print(f"Run manifest written to: {manifest_path}")
 
 
 if __name__ == '__main__':
