@@ -8,12 +8,13 @@ import sys
 import os
 import csv
 import torch
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+sys.stdout.reconfigure(encoding='utf-8')
+
 from experiment.utils import get_kwargs, save_graph_with_features, Accuracy
 from experiment.run_manifest import build_manifest, write_manifest
 from experiment.mmlu.mmlu_prompt_set import ROLE_DESCRIPTION
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-sys.stdout.reconfigure(encoding='utf-8')
 
 import asyncio
 import argparse
