@@ -7,11 +7,11 @@ import asyncio
 from tqdm import tqdm
 import sys
 import datetime
-from mas_framework.utils.globals import Cost, PromptTokens, CompletionTokens
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+from mas_framework.utils.globals import Cost, PromptTokens, CompletionTokens
 from sentence_transformers import SentenceTransformer
 from mas_framework.tools.reader.readers import JSONLReader
 from mas_framework.graph.graph import TestGraph
