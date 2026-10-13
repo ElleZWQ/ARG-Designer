@@ -219,7 +219,7 @@ async def generate_pruned_data(args, dataset_subset, model_path, output_dir):
                     successful_efficient_graphs += 1
                     file_name = f"eff_q{metadata['record_idx']}_g0_solved.pt"
                     torch.save(metadata['pyg_data'], os.path.join(output_dir, file_name))
-    print(f"Stage 2a done, {count} graphs saved")
+    print(f"Stage 2a done, {successful_efficient_graphs} graphs saved")
 
 
 async def generate_simple_data(args, dataset_subset, output_dir):
