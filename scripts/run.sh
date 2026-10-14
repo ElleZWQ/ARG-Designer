@@ -6,11 +6,12 @@
 # Usage:
 #   ./scripts/run.sh gsm8k all
 #   ./scripts/run.sh humaneval all
+#   ./scripts/run.sh mbpp all
 #   ./scripts/run.sh gsm8k stage1
 set -euo pipefail
 
 # ------------------- Tunables -------------------------------
-DOMAIN="${1:-gsm8k}"          # dataset domain: gsm8k | humaneval | aqua
+DOMAIN="${1:-gsm8k}"          # dataset domain: gsm8k | humaneval | aqua | multiarith | svamp | mbpp
 STAGE="${2:-all}"             # stage1 | stage2 | stage3 | all
 LLM_NAME="GPT-5.6-Sol-joybuilder"  # LLM backend model name
 SEED=42                      # fixed seed for reproducibility
