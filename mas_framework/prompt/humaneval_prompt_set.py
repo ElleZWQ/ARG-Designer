@@ -274,3 +274,9 @@ f"6. Adhere to the constraints: {constraint}.\n"
     @staticmethod
     def get_decision_few_shot():
         return ""
+
+
+@PromptSetRegistry.register('mbpp')
+class MBPPPromptSet(HumanEvalPromptSet):
+    """MBPP shares humaneval's code-writing roles and prompts verbatim."""
+    pass

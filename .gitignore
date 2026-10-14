@@ -16,3 +16,7 @@ output/
 *.jsonl
 *.checkpoint
 .DS_Store
+
+# MMLU data (downloaded, not in repo)
+datasets/MMLU/data/
+datasets/MMLU/data.tar

@@ -120,6 +120,25 @@ def load_graph_dataset(args, pretrain=True):
             role_embeddings_dict = dataset.precomputed_embeddings
         return dataset, role_embeddings_dict
 
+    elif args.dataset == 'mbpp':
+        from experiment.mbpp.mbpp_adapter import MBPPGraphDataset
+        sample_size = getattr(args, 'dataset_sample_size', 0)
+        if pretrain:
+            dataset = MBPPGraphDataset(data_dir=args.data_dir, sample_size=sample_size, pretrain=pretrain)
+        else:
+            dataset = MBPPGraphDataset(
+                data_dir=args.data_dir,
+                sample_size=sample_size,
+                pretrain=pretrain,
+                data_dir_ef=args.data_dir_ef
+            )
+        args.max_prev_node = 3
+        args.max_head_and_tail = None
+        role_embeddings_dict = {}
+        if hasattr(dataset, 'precomputed_embeddings'):
+            role_embeddings_dict = dataset.precomputed_embeddings
+        return dataset, role_embeddings_dict
+
     else:
         raise Exception(f"Unsupported dataset: {args.dataset}")
 
