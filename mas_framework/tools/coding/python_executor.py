@@ -2,8 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import ast
+import sys
 import astunparse
 from typing import List
+
+# Python 3.11+ caps int->str conversion at 4300 digits; MBPP big-number tasks
+# (factorials, powers) exceed it and crash the executor. Raise the cap.
+if hasattr(sys, 'set_int_max_str_digits'):
+    sys.set_int_max_str_digits(100000)
 
 from mas_framework.tools.coding.executor_utils import function_with_timeout
 from mas_framework.tools.coding.executor_types import ExecuteResult, Executor
