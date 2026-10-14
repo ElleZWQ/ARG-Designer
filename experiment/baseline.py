@@ -12,6 +12,7 @@ Usage:
 import os
 import sys
 import json
+import glob
 import time
 import socket
 import asyncio
@@ -69,7 +70,27 @@ def load_dataset(domain):
         check = None
     else:
         raise ValueError(f"Unknown domain: {domain}")
+    # Align with the full ARG-Designer method: only evaluate the SAME test split
+    # that cold_start produced (test_indices), so the comparison is fair.
+    ds = slice_test_set(domain, ds)
     return ds, predict, check
+
+
+def slice_test_set(domain, ds):
+    """Restrict ds to test_indices from stage1's task_split_<domain>.json."""
+    split_path = os.path.join(
+        'output', domain,
+        'stage1_cold_start_*', f'task_split_{domain}.json'
+    )
+    candidates = glob.glob(split_path)
+    if not candidates:
+        # No split yet — fall back to full set (nothing to align against).
+        return ds
+    # Pick the most recent stage1 split.
+    split_file = sorted(candidates)[-1]
+    task_split = json.load(open(split_file, 'r', encoding='utf-8'))
+    test_indices = task_split.get('test_indices', [])
+    return [ds[i] for i in test_indices]
 
 
 # Prompt, matching MathSolver's single-agent "math expert" constraint
