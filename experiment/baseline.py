@@ -112,6 +112,12 @@ SYSTEM_PROMPT = (
     "The last line of your output contains only the final result without any units, "
     "for example: The answer is 140"
 )
+MATH_SYSTEM_PROMPT = (
+    "You are a math expert. You will be given a math problem. "
+    "Give your own solving process step by step. "
+    "The last line of your output must be the final answer in a LaTeX box, "
+    "for example: The answer is $\\boxed{\\frac{3}{2}}$"
+)
 AQUA_SYSTEM_PROMPT = (
     "You are a math expert. You will be given a multiple-choice math problem. "
     "Give your own solving process step by step. "
@@ -140,6 +146,8 @@ async def main():
         executor = PyExecutor()
     elif args.domain == 'aqua':
         system = AQUA_SYSTEM_PROMPT
+    elif args.domain == 'math':
+        system = MATH_SYSTEM_PROMPT
     else:
         system = SYSTEM_PROMPT
 
