@@ -30,6 +30,7 @@ from datasets.gsm8k_dataset import (
 )
 from datasets.aqua_dataset import aqua_data_process, aqua_get_predict
 from datasets.mbpp_dataset import mbpp_data_process
+from datasets.math_dataset import math_data_process, math_get_predict, math_check_correctness
 
 
 def parse_args():
@@ -74,6 +75,11 @@ def load_dataset(domain):
         ds = mbpp_data_process(raw)
         predict = None  # handled via PyExecutor
         check = None
+    elif domain == 'math':
+        raw = [json.loads(l) for l in open('datasets/math/math.jsonl', 'r', encoding='utf-8')]
+        ds = math_data_process(raw)
+        predict = math_get_predict
+        check = math_check_correctness
     else:
         raise ValueError(f"Unknown domain: {domain}")
     # Align with the full ARG-Designer method: only evaluate the SAME test split

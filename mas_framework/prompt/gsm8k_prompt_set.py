@@ -405,3 +405,9 @@ class SVAMPPromptSet(GSM8KPromptSet):
     """SVAMP shares gsm8k's math roles and prompts verbatim."""
     pass
 
+
+@PromptSetRegistry.register('math')
+class MATHPromptSet(GSM8KPromptSet):
+    """MATH shares gsm8k's math roles and prompts verbatim."""
+    pass
+

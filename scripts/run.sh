@@ -11,7 +11,7 @@
 set -euo pipefail
 
 # ------------------- Tunables -------------------------------
-DOMAIN="${1:-gsm8k}"          # dataset domain: gsm8k | humaneval | aqua | multiarith | svamp | mbpp
+DOMAIN="${1:-gsm8k}"          # dataset domain: gsm8k | humaneval | aqua | multiarith | svamp | mbpp | math
 STAGE="${2:-all}"             # stage1 | stage2 | stage3 | all
 LLM_NAME="GPT-5.6-Sol-joybuilder"  # LLM backend model name
 SEED=42                      # fixed seed for reproducibility

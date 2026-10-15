@@ -488,6 +488,8 @@ class TestGraph(ABC):
             agent_type = 'MathSolver'
         elif self.domain == 'mbpp':
             agent_type = 'CodeWriting'
+        elif self.domain == 'math':
+            agent_type = 'MathSolver'
         prompt_set = PromptSetRegistry.get(self.domain)
 
         for idx, (role, constraint) in enumerate(zip(roles, constraints)):
