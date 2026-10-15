@@ -29,6 +29,7 @@ from datasets.gsm8k_dataset import (
     gsm_data_process, multiarith_data_process, svamp_data_process, gsm_get_predict
 )
 from datasets.aqua_dataset import aqua_data_process, aqua_get_predict
+from datasets.mbpp_dataset import mbpp_data_process
 
 
 def parse_args():
@@ -66,6 +67,11 @@ def load_dataset(domain):
     elif domain == 'humaneval':
         raw = [json.loads(l) for l in open('datasets/humaneval/humaneval-py.jsonl', 'r', encoding='utf-8')]
         ds = raw  # keep raw records (need prompt + test)
+        predict = None  # handled via PyExecutor
+        check = None
+    elif domain == 'mbpp':
+        raw = [json.loads(l) for l in open('datasets/mbpp/mbpp.jsonl', 'r', encoding='utf-8')]
+        ds = mbpp_data_process(raw)
         predict = None  # handled via PyExecutor
         check = None
     else:
@@ -123,7 +129,7 @@ async def main():
 
     llm = LLMRegistry.get(args.llm_name)
 
-    if args.domain == 'humaneval':
+    if args.domain in ('humaneval', 'mbpp'):
         system = CODE_SYSTEM_PROMPT
         executor = PyExecutor()
     elif args.domain == 'aqua':
@@ -138,25 +144,25 @@ async def main():
         batch = ds[i:i + args.batch_size]
         coros = []
 
-        if args.domain == 'humaneval':
+        if args.domain in ('humaneval', 'mbpp'):
             for rec in batch:
                 msgs = [
                     {'role': 'system', 'content': system},
-                    {'role': 'user', 'content': rec['prompt']},
+                    {'role': 'user', 'content': rec['task'] if 'task' in rec else rec['prompt']},
                 ]
                 coros.append(llm.agen(msgs))
             outs = await asyncio.gather(*coros, return_exceptions=True)
 
             for rec, out in zip(batch, outs):
                 if isinstance(out, Exception):
-                    results.append({'task_id': rec.get('task_id'), 'prompt': rec['prompt'],
-                                    'correct': False, 'error': str(out)})
+                    results.append({'task_id': rec.get('task_id'), 'error': str(out),
+                                    'correct': False})
                     continue
                 code = out.lstrip('```python\n').rstrip('\n```')
                 is_solved, _, _ = executor.execute(code, [rec['test']], timeout=10)
                 if is_solved:
                     solved += 1
-                results.append({'task_id': rec.get('task_id'), 'prompt': rec['prompt'],
+                results.append({'task_id': rec.get('task_id'),
                                 'is_solved': is_solved, 'code': code})
         else:
             for item in batch:
