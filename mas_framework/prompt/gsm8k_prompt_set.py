@@ -408,6 +408,33 @@ class SVAMPPromptSet(GSM8KPromptSet):
 
 @PromptSetRegistry.register('math')
 class MATHPromptSet(GSM8KPromptSet):
-    """MATH shares gsm8k's math roles and prompts verbatim."""
-    pass
+    """MATH shares gsm8k's roles but requires boxed-LaTeX answers."""
+
+    # MATH answers are LaTeX expressions, not plain numbers. Reuse the same
+    # roles but swap the answer format instruction to \boxed{}.
+    _BOXED_FORMAT = (
+        "The last line of your output must be the final answer in a LaTeX box, "
+        "for example: The answer is $\\boxed{\\frac{3}{2}}$"
+    )
+
+    @staticmethod
+    def get_constraint(role):
+        c = GSM8KPromptSet.get_constraint(role)
+        # Replace the numeric-answer example with a boxed latex example.
+        c = c.replace(
+            "The last line of your output contains only the final result without any units, for example: The answer is 140",
+            MATHPromptSet._BOXED_FORMAT,
+        )
+        return c
+
+    def get_description(self, role):
+        return self.get_constraint(role)
+
+    @staticmethod
+    def get_decision_constraint():
+        base = GSM8KPromptSet.get_decision_constraint()
+        return base.replace(
+            "The last line of your output contains only the final result without any units, for example: The answer is 140",
+            MATHPromptSet._BOXED_FORMAT,
+        )
 
