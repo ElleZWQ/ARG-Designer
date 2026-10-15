@@ -20,3 +20,7 @@ output/
 # MMLU data (downloaded, not in repo)
 datasets/MMLU/data/
 datasets/MMLU/data.tar
+
+# Local build/deploy artifacts (not source)
+uv.lock
+*.bundle
