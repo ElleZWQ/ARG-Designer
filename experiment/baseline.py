@@ -1,13 +1,21 @@
-"""Single-agent baseline evaluation.
+"""Single-agent baselines: Vanilla / CoT / Self-Consistency.
 
 Measures the LLM's own ability on each benchmark WITHOUT training the
-ARG-Designer graph generator. Each question is answered by ONE agent directly
-(no topology, no multi-agent collaboration), matching the paper's
-"Single-agent: Vanilla / CoT" baseline.
+ARG-Designer graph generator, with three single-agent prompting methods:
+
+  - vanilla : ask for the final answer only, no reasoning
+  - cot     : chain-of-thought, "think step by step" then answer   (default)
+  - sc_cot  : self-consistency = sample `--num_samples` CoT answers
+              per question, then majority-vote (math/choice) or pick
+              a passing implementation (code).
+
+Self-consistency sampling count follows the chosen --num_samples (default 3);
+the paper does not specify it, so the value is recorded in the manifest for
+reproducibility.
 
 Usage:
-    python experiment/baseline.py --domain gsm8k --llm_name GPT-5.6-Sol-joybuilder
-    python experiment/baseline.py --domain aqua   --llm_name GPT-5.6-Sol-joybuilder --limit 100
+    python experiment/baseline.py --domain gsm8k --method cot
+    python experiment/baseline.py --domain gsm8k --method sc_cot --num_samples 3
 """
 import os
 import sys
@@ -36,9 +44,13 @@ from datasets.math_dataset import math_data_process, math_get_predict, math_chec
 def parse_args():
     p = argparse.ArgumentParser(description="Single-agent baseline evaluation")
     p.add_argument('--domain', type=str, default='gsm8k',
-                   help='gsm8k | aqua | multiarith | svamp | humaneval')
+                   help='gsm8k | aqua | multiarith | svamp | humaneval | mbpp | math')
     p.add_argument('--llm_name', type=str, default='GPT-5.6-Sol-joybuilder')
     p.add_argument('--batch_size', type=int, default=8)
+    p.add_argument('--method', type=str, default='cot',
+                   help='baseline method: vanilla | cot | sc_cot')
+    p.add_argument('--num_samples', type=int, default=3,
+                   help='self-consistency sampling count (sc_cot only)')
     p.add_argument('--limit', type=int, default=None,
                    help='limit number of questions (None = all)')
     return p.parse_args()
@@ -106,11 +118,16 @@ def slice_test_set(domain, ds):
 
 
 # Prompt, matching MathSolver's single-agent "math expert" constraint
+# (CoT: ask for step-by-step reasoning)
 SYSTEM_PROMPT = (
     "You are a math expert. You will be given a math problem. "
     "Give your own solving process step by step. "
     "The last line of your output contains only the final result without any units, "
     "for example: The answer is 140"
+)
+# Vanilla: final answer only, no reasoning.
+VANILLA_SYSTEM_PROMPT = (
+    "You are a math expert. Give only the final answer, without any explanation or steps."
 )
 MATH_SYSTEM_PROMPT = (
     "You are a math expert. You will be given a math problem. "
@@ -118,16 +135,55 @@ MATH_SYSTEM_PROMPT = (
     "The last line of your output must be the final answer in a LaTeX box, "
     "for example: The answer is $\\boxed{\\frac{3}{2}}$"
 )
+MATH_VANILLA_SYSTEM_PROMPT = (
+    "You are a math expert. Give only the final answer in a LaTeX box, "
+    "for example: $\\boxed{\\frac{3}{2}}$, without any explanation or steps."
+)
 AQUA_SYSTEM_PROMPT = (
     "You are a math expert. You will be given a multiple-choice math problem. "
     "Give your own solving process step by step. "
     "The last line of your output contains only the final choice as a capital letter, "
     "for example: The answer is A"
 )
+AQUA_VANILLA_SYSTEM_PROMPT = (
+    "You are a math expert. Give only the final choice as a capital letter, "
+    "for example: A, without any explanation or steps."
+)
 CODE_SYSTEM_PROMPT = (
     "You are an expert Python programmer. Write a complete function to solve the task. "
     "Give only the Python code, nothing else."
 )
+CODE_VANILLA_SYSTEM_PROMPT = CODE_SYSTEM_PROMPT  # code tasks are already "answer only"
+
+
+async def self_consistency_sample(llm, system, question, args):
+    """Sample `args.num_samples` CoT answers for one question, in parallel."""
+    msgs = [{'role': 'system', 'content': system}, {'role': 'user', 'content': question}]
+    coros = [llm.agen(msgs) for _ in range(args.num_samples)]
+    outs = await asyncio.gather(*coros, return_exceptions=True)
+    return outs
+
+
+def majority_vote(samples, predict, gold, check):
+    """Pick the most common sampled answer, then return that answer.
+
+    If no sample yields a valid string answer, fall back to the first
+    non-exception sample's predicted answer.
+    """
+    from collections import Counter
+    preds = []
+    for s in samples:
+        if isinstance(s, Exception):
+            continue
+        p = predict(s)
+        if p:
+            preds.append(p)
+    if not preds:
+        return ''
+    # Vote among the raw predicted strings (most frequent wins).
+    counts = Counter(preds)
+    best = counts.most_common(1)[0][0]
+    return best
 
 
 async def main():
@@ -141,67 +197,69 @@ async def main():
 
     llm = LLMRegistry.get(args.llm_name)
 
+    # Pick the right prompt per domain + method.
+    vanilla = args.method == 'vanilla'
     if args.domain in ('humaneval', 'mbpp'):
-        system = CODE_SYSTEM_PROMPT
+        system = CODE_VANILLA_SYSTEM_PROMPT if vanilla else CODE_SYSTEM_PROMPT
         executor = PyExecutor()
     elif args.domain == 'aqua':
-        system = AQUA_SYSTEM_PROMPT
+        system = AQUA_VANILLA_SYSTEM_PROMPT if vanilla else AQUA_SYSTEM_PROMPT
     elif args.domain == 'math':
-        system = MATH_SYSTEM_PROMPT
+        system = MATH_VANILLA_SYSTEM_PROMPT if vanilla else MATH_SYSTEM_PROMPT
     else:
-        system = SYSTEM_PROMPT
+        system = VANILLA_SYSTEM_PROMPT if vanilla else SYSTEM_PROMPT
 
     solved = 0
     results = []
     # chunk into batches to bound concurrency (avoid LLM rate limits)
     for i in range(0, total, args.batch_size):
         batch = ds[i:i + args.batch_size]
-        coros = []
 
         if args.domain in ('humaneval', 'mbpp'):
+            # For code tasks, sc_cot samples N implementations and counts any that pass.
             for rec in batch:
-                msgs = [
-                    {'role': 'system', 'content': system},
-                    {'role': 'user', 'content': rec['task'] if 'task' in rec else rec['prompt']},
-                ]
-                coros.append(llm.agen(msgs))
-            outs = await asyncio.gather(*coros, return_exceptions=True)
-
-            for rec, out in zip(batch, outs):
-                if isinstance(out, Exception):
-                    results.append({'task_id': rec.get('task_id'), 'error': str(out),
-                                    'correct': False})
+                outs = await self_consistency_sample(llm, system, rec['task'] if 'task' in rec else rec['prompt'], args) if args.method == 'sc_cot' else [await llm.agen([{'role':'system','content':system},{'role':'user','content':rec['task'] if 'task' in rec else rec['prompt']}])]
+                if isinstance(outs, Exception):
+                    results.append({'task_id': rec.get('task_id'), 'error': str(outs), 'correct': False})
                     continue
-                code = out.lstrip('```python\n').rstrip('\n```')
-                is_solved, _, _ = executor.execute(code, [rec['test']], timeout=10)
+                if not isinstance(outs, list):
+                    outs = [outs]
+                is_solved = False
+                for out in outs:
+                    if isinstance(out, Exception):
+                        continue
+                    code = out.lstrip('```python\n').rstrip('\n```')
+                    ok, _, _ = executor.execute(code, [rec['test']], timeout=10)
+                    if ok:
+                        is_solved = True
+                        break
                 if is_solved:
                     solved += 1
-                results.append({'task_id': rec.get('task_id'),
-                                'is_solved': is_solved, 'code': code})
+                results.append({'task_id': rec.get('task_id'), 'is_solved': is_solved})
         else:
             for item in batch:
-                msgs = [
-                    {'role': 'system', 'content': system},
-                    {'role': 'user', 'content': item['task']},
-                ]
-                coros.append(llm.agen(msgs))
-            outs = await asyncio.gather(*coros, return_exceptions=True)
-
-            for item, out in zip(batch, outs):
-                if isinstance(out, Exception):
-                    results.append({'question': item['task'], 'pred': None,
-                                    'gold': item['answer'], 'correct': False, 'error': str(out)})
-                    continue
-                pred = predict(out)
-                gold = item['answer']
+                if args.method == 'sc_cot':
+                    outs = await self_consistency_sample(llm, system, item['task'], args)
+                    if isinstance(outs, Exception):
+                        results.append({'question': item['task'], 'pred': None, 'gold': item['answer'], 'correct': False, 'error': str(outs)})
+                        continue
+                    # majority vote over the sampled predictions
+                    pred = majority_vote(outs, predict, item['answer'], check)
+                    gold = item['answer']
+                else:
+                    out = await llm.agen([{'role':'system','content':system},{'role':'user','content':item['task']}])
+                    if isinstance(out, Exception):
+                        results.append({'question': item['task'], 'pred': None, 'gold': item['answer'], 'correct': False, 'error': str(out)})
+                        continue
+                    pred = predict(out)
+                    gold = item['answer']
                 try:
                     correct = check(pred, gold)
                 except Exception:
                     correct = False
                 if correct:
                     solved += 1
-                results.append({'question': item['task'], 'pred': pred,
-                                'gold': gold, 'correct': correct, 'answer': out})
+                results.append({'question': item['task'], 'pred': pred, 'gold': gold, 'correct': correct})
 
         acc = solved / min(total, i + len(batch)) * 100
         tqdm.write(f"progress {min(total, i+len(batch))}/{total}, acc {acc:.2f}%")
