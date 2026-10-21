@@ -24,3 +24,6 @@ datasets/MMLU/data.tar
 # Local build/deploy artifacts (not source)
 uv.lock
 *.bundle
+
+# Personal reproduction notes (not part of upstream project)
+REPRODUCTION_NOTES.md
