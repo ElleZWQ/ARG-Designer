@@ -247,9 +247,10 @@ async def main():
                 debater = LLM_Debate_Main(
                     rounds_num=args.rounds, dataset_name=args.domain
                 )
+                debate_batch = [{'query': it['task']} for it in batch]
                 try:
                     debate_results = await debater.inference_batch(
-                        batch, dataset_name=args.domain
+                        debate_batch, dataset_name=args.domain
                     )
                 except Exception as e:
                     debate_results = [None] * len(batch)
