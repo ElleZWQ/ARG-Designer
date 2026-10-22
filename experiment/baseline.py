@@ -240,40 +240,59 @@ async def main():
                     solved += 1
                 results.append({'task_id': rec.get('task_id'), 'is_solved': is_solved})
         else:
-            for item in batch:
-                if args.method == 'sc_cot':
-                    outs = await self_consistency_sample(llm, system, item['task'], args)
-                    if isinstance(outs, Exception):
-                        results.append({'question': item['task'], 'pred': None, 'gold': item['answer'], 'correct': False, 'error': str(outs)})
-                        continue
-                    # majority vote over the sampled predictions
-                    pred = majority_vote(outs, predict, item['answer'], check)
-                    gold = item['answer']
-                elif args.method == 'llm_debate':
-                    debater = LLM_Debate_Main(
-                        rounds_num=args.rounds, dataset_name=args.domain
-                    )
-                    try:
-                        r = await debater.inference_async({'query': item['task']})
-                        pred = predict(r['response'])
-                    except Exception as e:
-                        results.append({'question': item['task'], 'pred': None, 'gold': item['answer'], 'correct': False, 'error': str(e)})
-                        continue
-                    gold = item['answer']
-                else:
-                    out = await llm.agen([{'role':'system','content':system},{'role':'user','content':item['task']}])
-                    if isinstance(out, Exception):
-                        results.append({'question': item['task'], 'pred': None, 'gold': item['answer'], 'correct': False, 'error': str(out)})
-                        continue
-                    pred = predict(out)
-                    gold = item['answer']
+            if args.method == 'llm_debate':
+                # Parallel debate across the batch (agent contexts run in
+                # parallel within a round). Keep batch small so concurrency stays
+                # within the gateway limit.
+                debater = LLM_Debate_Main(
+                    rounds_num=args.rounds, dataset_name=args.domain
+                )
                 try:
-                    correct = check(pred, gold)
-                except Exception:
-                    correct = False
-                if correct:
-                    solved += 1
-                results.append({'question': item['task'], 'pred': pred, 'gold': gold, 'correct': correct})
+                    debate_results = await debater.inference_batch(
+                        batch, dataset_name=args.domain
+                    )
+                except Exception as e:
+                    debate_results = [None] * len(batch)
+                    print(f"debate batch error: {e}")
+                for item, r in zip(batch, debate_results):
+                    gold = item['answer']
+                    if r is None:
+                        results.append({'question': item['task'], 'pred': None,
+                                        'gold': gold, 'correct': False, 'error': 'debate failed'})
+                        continue
+                    pred = predict(r['response'])
+                    try:
+                        correct = check(pred, gold)
+                    except Exception:
+                        correct = False
+                    if correct:
+                        solved += 1
+                    results.append({'question': item['task'], 'pred': pred,
+                                    'gold': gold, 'correct': correct})
+            else:
+                for item in batch:
+                    if args.method == 'sc_cot':
+                        outs = await self_consistency_sample(llm, system, item['task'], args)
+                        if isinstance(outs, Exception):
+                            results.append({'question': item['task'], 'pred': None, 'gold': item['answer'], 'correct': False, 'error': str(outs)})
+                            continue
+                        # majority vote over the sampled predictions
+                        pred = majority_vote(outs, predict, item['answer'], check)
+                        gold = item['answer']
+                    else:
+                        out = await llm.agen([{'role':'system','content':system},{'role':'user','content':item['task']}])
+                        if isinstance(out, Exception):
+                            results.append({'question': item['task'], 'pred': None, 'gold': item['answer'], 'correct': False, 'error': str(out)})
+                            continue
+                        pred = predict(out)
+                        gold = item['answer']
+                    try:
+                        correct = check(pred, gold)
+                    except Exception:
+                        correct = False
+                    if correct:
+                        solved += 1
+                    results.append({'question': item['task'], 'pred': pred, 'gold': gold, 'correct': correct})
 
         acc = solved / min(total, i + len(batch)) * 100
         tqdm.write(f"progress {min(total, i+len(batch))}/{total}, acc {acc:.2f}%")
