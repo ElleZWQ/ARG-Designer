@@ -39,6 +39,7 @@ from datasets.gsm8k_dataset import (
 from datasets.aqua_dataset import aqua_data_process, aqua_get_predict
 from datasets.mbpp_dataset import mbpp_data_process
 from datasets.math_dataset import math_data_process, math_get_predict, math_check_correctness
+from experiment.LLM_debate import LLM_Debate_Main
 
 
 def parse_args():
@@ -48,9 +49,11 @@ def parse_args():
     p.add_argument('--llm_name', type=str, default='GPT-5.6-Sol-joybuilder')
     p.add_argument('--batch_size', type=int, default=8)
     p.add_argument('--method', type=str, default='cot',
-                   help='baseline method: vanilla | cot | sc_cot')
+                   help='baseline method: vanilla | cot | sc_cot | llm_debate')
     p.add_argument('--num_samples', type=int, default=3,
                    help='self-consistency sampling count (sc_cot only)')
+    p.add_argument('--rounds', type=int, default=2,
+                   help='debate rounds (llm_debate only)')
     p.add_argument('--limit', type=int, default=None,
                    help='limit number of questions (None = all)')
     return p.parse_args()
@@ -245,6 +248,17 @@ async def main():
                         continue
                     # majority vote over the sampled predictions
                     pred = majority_vote(outs, predict, item['answer'], check)
+                    gold = item['answer']
+                elif args.method == 'llm_debate':
+                    debater = LLM_Debate_Main(
+                        rounds_num=args.rounds, dataset_name=args.domain
+                    )
+                    try:
+                        r = await debater.inference_async({'query': item['task']})
+                        pred = predict(r['response'])
+                    except Exception as e:
+                        results.append({'question': item['task'], 'pred': None, 'gold': item['answer'], 'correct': False, 'error': str(e)})
+                        continue
                     gold = item['answer']
                 else:
                     out = await llm.agen([{'role':'system','content':system},{'role':'user','content':item['task']}])
