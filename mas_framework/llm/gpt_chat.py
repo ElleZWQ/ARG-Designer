@@ -43,7 +43,7 @@ async def _request_chat(
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
         async with session.post(url, headers=headers, json=payload) as resp:
             if resp.status != 200:
                 body = await resp.text()
