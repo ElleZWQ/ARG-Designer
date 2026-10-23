@@ -46,8 +46,11 @@ class LLM_Debate_Main:
         return AGENT_NUM.get(ds, 5)
 
     async def _call(self, messages):
-        """Call the LLM with a list of {role, content} dicts; return text."""
-        return await self.llm.agen(messages)
+        """Call the LLM with a list of {role, content} dicts; return text.
+
+        Wrap in a timeout so a single hung request can't stall the whole run.
+        """
+        return await asyncio.wait_for(self.llm.agen(messages), timeout=120.0)
 
     @staticmethod
     def _as_dict(content):
