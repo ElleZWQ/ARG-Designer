@@ -165,8 +165,8 @@ def _remove_right_units(string):
     # "\\text{ " only ever occurs (at least in the val set) when describing units
     if "\\text{ " in string:
         splits = string.split("\\text{ ")
-        assert len(splits) == 2
-        return splits[0]
+        # Be robust: some outputs may split into more/fewer parts.
+        return splits[0] if len(splits) == 2 else string
     else:
         return string
 
