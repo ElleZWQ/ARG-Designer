@@ -219,26 +219,44 @@ async def main():
         batch = ds[i:i + args.batch_size]
 
         if args.domain in ('humaneval', 'mbpp'):
-            # For code tasks, sc_cot samples N implementations and counts any that pass.
-            for rec in batch:
-                outs = await self_consistency_sample(llm, system, rec['task'] if 'task' in rec else rec['prompt'], args) if args.method == 'sc_cot' else [await llm.agen([{'role':'system','content':system},{'role':'user','content':rec['task'] if 'task' in rec else rec['prompt']}])]
-                if isinstance(outs, Exception):
-                    results.append({'task_id': rec.get('task_id'), 'error': str(outs), 'correct': False})
-                    continue
-                if not isinstance(outs, list):
-                    outs = [outs]
-                is_solved = False
-                for out in outs:
-                    if isinstance(out, Exception):
+            if args.method == 'llm_debate':
+                debater = LLM_Debate_Main(rounds_num=args.rounds, dataset_name=args.domain)
+                debate_batch = [{'query': rec['task'] if 'task' in rec else rec['prompt']} for rec in batch]
+                try:
+                    debate_results = await debater.inference_batch(debate_batch, dataset_name=args.domain)
+                except Exception as e:
+                    debate_results = [None] * len(batch)
+                    print(f"debate batch error: {e}")
+                for rec, r in zip(batch, debate_results):
+                    if r is None:
+                        results.append({'task_id': rec.get('task_id'), 'is_solved': False, 'error': 'debate failed'})
                         continue
-                    code = out.lstrip('```python\n').rstrip('\n```')
-                    ok, _, _ = executor.execute(code, [rec['test']], timeout=10)
-                    if ok:
-                        is_solved = True
-                        break
-                if is_solved:
-                    solved += 1
-                results.append({'task_id': rec.get('task_id'), 'is_solved': is_solved})
+                    code_str = r.get('final', '').lstrip('```python\n').rstrip('\n```')
+                    is_solved, _, _ = executor.execute(code_str, [rec['test']], timeout=10)
+                    if is_solved:
+                        solved += 1
+                    results.append({'task_id': rec.get('task_id'), 'is_solved': is_solved})
+            else:
+                # For code tasks, sc_cot samples N implementations and counts any that pass.
+                for rec in batch:
+                    outs = await self_consistency_sample(llm, system, rec['task'] if 'task' in rec else rec['prompt'], args) if args.method == 'sc_cot' else [await llm.agen([{'role':'system','content':system},{'role':'user','content':rec['task'] if 'task' in rec else rec['prompt']}])]
+                    if isinstance(outs, Exception):
+                        results.append({'task_id': rec.get('task_id'), 'error': str(outs), 'correct': False})
+                        continue
+                    if not isinstance(outs, list):
+                        outs = [outs]
+                    is_solved = False
+                    for out in outs:
+                        if isinstance(out, Exception):
+                            continue
+                        code = out.lstrip('```python\n').rstrip('\n```')
+                        ok, _, _ = executor.execute(code, [rec['test']], timeout=10)
+                        if ok:
+                            is_solved = True
+                            break
+                    if is_solved:
+                        solved += 1
+                    results.append({'task_id': rec.get('task_id'), 'is_solved': is_solved})
         else:
             if args.method == 'llm_debate':
                 # Parallel debate across the batch (agent contexts run in

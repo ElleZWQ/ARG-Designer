@@ -38,6 +38,8 @@ class LLM_Debate_Main:
         self._fixed_agents = agents_num
         self.dataset_name = dataset_name
         self.llm = LLMRegistry.get(LLM_NAME)
+        # Code datasets aggregate into a single implementation, not "Final Answer: X".
+        self.code_mode = dataset_name in ("humaneval", "mbpp")
 
     def _agents_num(self, dataset_name=None):
         if self._fixed_agents is not None:
@@ -87,15 +89,22 @@ class LLM_Debate_Main:
         )
         return {"role": "user", "content": prefix_string}
 
-    def _aggregate_prompt(self, query, answers):
+    def _aggregate_prompt(self, query, answers, code=False):
         prompt = f"Task:\n{query}\n\n"
         for i, answer in enumerate(answers):
             prompt += f"Solution {i + 1}:\n{answer}\n\n"
-        prompt += (
-            "Given all the above solutions, reason over them carefully and provide "
-            "a final answer to the task. Please put your final answer in the format "
-            "of Final Answer: "
-        )
+        if code:
+            prompt += (
+                "You are a Python programmer. Given all the above solutions, write "
+                "the single best complete Python implementation. Output ONLY the "
+                "Python code, nothing else.\n"
+            )
+        else:
+            prompt += (
+                "Given all the above solutions, reason over them carefully and provide "
+                "a final answer to the task. Please put your final answer in the format "
+                "of Final Answer: "
+            )
         return prompt
 
     async def inference_async(self, sample, dataset_name=None):
@@ -182,7 +191,7 @@ class LLM_Debate_Main:
         agg_prompts = []
         for s, ctxs in zip(samples, all_agent_contexts):
             answers = [c[-1]["content"] for c in ctxs]
-            agg_prompts.append(self._aggregate_prompt(s["query"], answers))
+            agg_prompts.append(self._aggregate_prompt(s["query"], answers, code=self.code_mode))
 
         t0 = time.time()
         agg_responses = await asyncio.gather(
@@ -198,6 +207,9 @@ class LLM_Debate_Main:
                 f"===== Solution {i + 1} =====\n{a}\n" for i, a in enumerate(answers)
             )
             results.append(
-                {"response": formatted + f"===== Solution {n + 1} =====\n{final}"}
+                {
+                    "response": formatted + f"===== Solution {n + 1} =====\n{final}",
+                    "final": final,
+                }
             )
         return results
