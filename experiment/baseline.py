@@ -40,6 +40,12 @@ from datasets.aqua_dataset import aqua_data_process, aqua_get_predict
 from datasets.mbpp_dataset import mbpp_data_process
 from datasets.math_dataset import math_data_process, math_get_predict, math_check_correctness
 from experiment.LLM_debate import LLM_Debate_Main
+from experiment.LLM_dylan import DyLAN_Math
+
+# Agent count for DyLAN math datasets, matching ARG-Designer's typical topology size.
+AGENT_NUM_DYLAN = {
+    "gsm8k": 3, "aqua": 3, "math": 3, "multiarith": 3, "svamp": 3,
+}
 
 
 def parse_args():
@@ -49,7 +55,7 @@ def parse_args():
     p.add_argument('--llm_name', type=str, default='GPT-5.6-Sol-joybuilder')
     p.add_argument('--batch_size', type=int, default=8)
     p.add_argument('--method', type=str, default='cot',
-                   help='baseline method: vanilla | cot | sc_cot | llm_debate')
+                   help='baseline method: vanilla | cot | sc_cot | llm_debate | dylan')
     p.add_argument('--num_samples', type=int, default=3,
                    help='self-consistency sampling count (sc_cot only)')
     p.add_argument('--rounds', type=int, default=2,
@@ -258,7 +264,27 @@ async def main():
                         solved += 1
                     results.append({'task_id': rec.get('task_id'), 'is_solved': is_solved})
         else:
-            if args.method == 'llm_debate':
+            if args.method == 'dylan':
+                # DyLAN math: multi-agent rounds with scoring + consensus stop.
+                for item in batch:
+                    try:
+                        pred = await DyLAN_Math(
+                            args.llm_name,
+                            num_agents=AGENT_NUM_DYLAN.get(args.domain, 3),
+                            num_rounds=args.rounds,
+                            seed=args.seed,
+                        ).run(item['task'])
+                        gold = item['answer']
+                        correct = check(pred, gold)
+                    except Exception as e:
+                        results.append({'question': item['task'], 'pred': None,
+                                        'gold': item['answer'], 'correct': False, 'error': str(e)})
+                        continue
+                    if correct:
+                        solved += 1
+                    results.append({'question': item['task'], 'pred': pred,
+                                    'gold': gold, 'correct': correct})
+            elif args.method == 'llm_debate':
                 # Parallel debate across the batch (agent contexts run in
                 # parallel within a round). Keep batch small so concurrency stays
                 # within the gateway limit.
