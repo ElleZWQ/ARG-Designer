@@ -58,6 +58,7 @@ def parse_args():
                    help='baseline method: vanilla | cot | sc_cot | llm_debate | dylan')
     p.add_argument('--num_samples', type=int, default=3,
                    help='self-consistency sampling count (sc_cot only)')
+    p.add_argument('--seed', type=int, default=42, help='random seed')
     p.add_argument('--rounds', type=int, default=2,
                    help='debate rounds (llm_debate only)')
     p.add_argument('--limit', type=int, default=None,
