@@ -11,6 +11,7 @@ PyExecutor running the hidden test (not sacrebleu text similarity, not
 `def ...`) and mbpp (prose + "Function signature: def ...").
 """
 import re
+import random
 
 
 class DyLAN_Code:
