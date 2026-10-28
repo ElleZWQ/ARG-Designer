@@ -237,9 +237,19 @@ async def main():
                         query = rec['task'] if 'task' in rec else rec['prompt']
                         r = await asyncio.to_thread(dylan.inference, {'query': query})
                         body = r['response'].lstrip('```python\n').rstrip('\n```')
-                        # DyLAN returns only the function body; prepend the signature
-                        # (prompt) so PyExecutor can run the hidden test.
-                        full_code = query + "\n" + body
+                        if args.domain == 'mbpp':
+                            # mbpp prompt has prose + "Function signature: def foo(...)".
+                            # Extract the pure `def foo(...):` line and prepend it to the body.
+                            sig = None
+                            for line in query.split('\n'):
+                                m = re.search(r'(def\s+\w+\s*\(.*?\)\s*:)', line)
+                                if m:
+                                    sig = m.group(1)
+                                    break
+                            full_code = (sig + "\n" + body) if sig else body
+                        else:
+                            # humaneval prompt is valid Python (def + docstring).
+                            full_code = query + "\n" + body
                         is_solved, _, _ = executor.execute(full_code, [rec['test']], timeout=10)
                         if is_solved:
                             solved += 1
