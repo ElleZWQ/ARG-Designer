@@ -41,7 +41,7 @@ from datasets.mbpp_dataset import mbpp_data_process
 from datasets.math_dataset import math_data_process, math_get_predict, math_check_correctness
 from experiment.LLM_debate import LLM_Debate_Main
 from experiment.LLM_dylan import DyLAN_Math
-from experiment.LLM_dylan_humaneval import DyLAN_HumanEval
+from experiment.LLM_dylan_code import run_dylan_code
 
 # Agent count for DyLAN math datasets, matching ARG-Designer's typical topology size.
 AGENT_NUM_DYLAN = {
@@ -230,27 +230,11 @@ async def main():
             if args.method == 'dylan':
                 for rec in batch:
                     try:
-                        dylan = DyLAN_HumanEval(
-                            args.llm_name,
-                            num_agents=4, num_judges=4, num_rounds=args.rounds, seed=args.seed,
-                        )
                         query = rec['task'] if 'task' in rec else rec['prompt']
-                        r = await asyncio.to_thread(dylan.inference, {'query': query})
-                        body = r['response'].lstrip('```python\n').rstrip('\n```')
-                        if args.domain == 'mbpp':
-                            # mbpp prompt has prose + "Function signature: def foo(...)".
-                            # Extract the pure `def foo(...):` line and prepend it to the body.
-                            sig = None
-                            for line in query.split('\n'):
-                                m = re.search(r'(def\s+\w+\s*\(.*?\)\s*:)', line)
-                                if m:
-                                    sig = m.group(1)
-                                    break
-                            full_code = (sig + "\n" + body) if sig else body
-                        else:
-                            # humaneval prompt is valid Python (def + docstring).
-                            full_code = query + "\n" + body
-                        is_solved, _, _ = executor.execute(full_code, [rec['test']], timeout=10)
+                        is_solved, _ = await run_dylan_code(
+                            llm, query, rec['test'],
+                            num_agents=4, num_rounds=args.rounds, seed=args.seed,
+                        )
                         if is_solved:
                             solved += 1
                         results.append({'task_id': rec.get('task_id'), 'is_solved': is_solved})
