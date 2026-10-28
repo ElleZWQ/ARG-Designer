@@ -274,6 +274,7 @@ async def main():
                             num_agents=AGENT_NUM_DYLAN.get(args.domain, 3),
                             num_rounds=args.rounds,
                             seed=args.seed,
+                            dataset_name=args.domain,
                         ).run(item['task'])
                         gold = item['answer']
                         correct = check(pred, gold)

@@ -15,11 +15,12 @@ from mas_framework.llm.llm_registry import LLMRegistry
 
 
 class DyLAN_Math:
-    def __init__(self, llm_name, num_agents=3, num_rounds=3, seed=0):
+    def __init__(self, llm_name, num_agents=3, num_rounds=3, seed=0, dataset_name=None):
         self.llm = LLMRegistry.get(llm_name)
         self.num_agents = num_agents
         self.num_rounds = num_rounds
         self.seed = seed
+        self.choice = (dataset_name == "aqua")
         # system prompt mirroring DyLAN's math debate
         self.system_prompt = (
             "It's a debate. Explain your reasons at each round thoroughly and give "
@@ -27,9 +28,16 @@ class DyLAN_Math:
         )
 
     # ---- answer extraction: reuse repo checkers where possible, keep a light local fallback ----
-    @staticmethod
-    def _extract_answer(text):
-        # reuse the repo's gsm answer extractor (handles boxed, fractions, numbers)
+    def _extract_answer(self, text):
+        # choice task: extract the final capital letter (A-E)
+        if self.choice:
+            from datasets.aqua_dataset import aqua_get_predict
+            a = aqua_get_predict(text)
+            if a:
+                return a
+            m = re.findall(r"\b([A-E])\b", text)
+            return m[-1] if m else ""
+        # numeric math: reuse the repo's gsm answer extractor
         try:
             from datasets.gsm8k_dataset import gsm_get_predict
             a = gsm_get_predict(text)
@@ -37,7 +45,6 @@ class DyLAN_Math:
                 return a
         except Exception:
             pass
-        # fallback: last "The answer is ..." / boxed
         m = re.findall(r"\\boxed\{([^}]*)\}", text)
         if m:
             return m[-1].strip()
