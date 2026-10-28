@@ -234,9 +234,13 @@ async def main():
                             args.llm_name,
                             num_agents=4, num_judges=4, num_rounds=args.rounds, seed=args.seed,
                         )
-                        r = await asyncio.to_thread(dylan.inference, {'query': rec['task'] if 'task' in rec else rec['prompt']})
-                        code_str = r['response'].lstrip('```python\n').rstrip('\n```')
-                        is_solved, _, _ = executor.execute(code_str, [rec['test']], timeout=10)
+                        query = rec['task'] if 'task' in rec else rec['prompt']
+                        r = await asyncio.to_thread(dylan.inference, {'query': query})
+                        body = r['response'].lstrip('```python\n').rstrip('\n```')
+                        # DyLAN returns only the function body; prepend the signature
+                        # (prompt) so PyExecutor can run the hidden test.
+                        full_code = query + "\n" + body
+                        is_solved, _, _ = executor.execute(full_code, [rec['test']], timeout=10)
                         if is_solved:
                             solved += 1
                         results.append({'task_id': rec.get('task_id'), 'is_solved': is_solved})
