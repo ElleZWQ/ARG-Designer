@@ -41,6 +41,7 @@ from datasets.mbpp_dataset import mbpp_data_process
 from datasets.math_dataset import math_data_process, math_get_predict, math_check_correctness
 from experiment.LLM_debate import LLM_Debate_Main
 from experiment.LLM_dylan import DyLAN_Math
+from experiment.LLM_dylan_humaneval import DyLAN_HumanEval
 
 # Agent count for DyLAN math datasets, matching ARG-Designer's typical topology size.
 AGENT_NUM_DYLAN = {
@@ -226,7 +227,22 @@ async def main():
         batch = ds[i:i + args.batch_size]
 
         if args.domain in ('humaneval', 'mbpp'):
-            if args.method == 'llm_debate':
+            if args.method == 'dylan':
+                for rec in batch:
+                    try:
+                        dylan = DyLAN_HumanEval(
+                            args.llm_name,
+                            num_agents=4, num_judges=4, num_rounds=args.rounds, seed=args.seed,
+                        )
+                        r = await asyncio.to_thread(dylan.inference, {'query': rec['task'] if 'task' in rec else rec['prompt']})
+                        code_str = r['response'].lstrip('```python\n').rstrip('\n```')
+                        is_solved, _, _ = executor.execute(code_str, [rec['test']], timeout=10)
+                        if is_solved:
+                            solved += 1
+                        results.append({'task_id': rec.get('task_id'), 'is_solved': is_solved})
+                    except Exception as e:
+                        results.append({'task_id': rec.get('task_id'), 'is_solved': False, 'error': str(e)})
+            elif args.method == 'llm_debate':
                 debater = LLM_Debate_Main(rounds_num=args.rounds, dataset_name=args.domain)
                 debate_batch = [{'query': rec['task'] if 'task' in rec else rec['prompt']} for rec in batch]
                 try:
