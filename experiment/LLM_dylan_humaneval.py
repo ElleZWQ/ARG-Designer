@@ -57,6 +57,11 @@ class DyLAN_HumanEval:
                 if ep:
                     entry_point = ep
                     break
+            # mbpp: "Function signature: def foo(...)" has a prefix before "def "
+            m = re.search(r'\bdef\s+(\w+)\s*\(', line)
+            if m:
+                entry_point = m.group(1)
+                break
         return prompt, entry_point
 
     def construct_message(self, responses, question):
@@ -542,11 +547,10 @@ class DyLAN_HumanEval:
         prompt, entry_point = self.parse_human_eval_query(query)
         if not entry_point:
             for line in prompt.split("\n"):
-                if line.startswith("def "):
-                    ep = line.split("def ")[1].split("(")[0].strip()
-                    if ep:
-                        entry_point = ep
-                        break
+                m = re.search(r'\bdef\s+(\w+)\s*\(', line)
+                if m:
+                    entry_point = m.group(1)
+                    break
         if not entry_point:
             raise ValueError("Could not determine entry point for the function")
 
