@@ -60,8 +60,16 @@ async def run_dylan_code(llm, query, test, num_agents=4, num_rounds=3, seed=0):
         c = DyLAN_Code._strip_code_block(r)
         codes.append(c)
 
-    # A code is "correct" if the full program (signature + body) passes the hidden test.
+    # A code is "correct" if the full program passes the hidden test. The agent
+    # may already emit a complete `def ...` (in which case we use it directly) or
+    # just a bare body (in which case we prepend the extracted signature).
     def full_code(body):
+        body = DyLAN_Code._strip_code_block(body)
+        # drop trailing scoring comment / array, e.g. "# [[5,5,5]]"
+        body = re.sub(r'#\s*\[\[.*?\]\]\s*$', '', body).rstrip()
+        if sig and DyLAN_Code._extract_entry_point(body):
+            # body already contains a full function definition
+            return body
         return (sig + "\n" + body) if sig else body
 
     def passes(body):
